@@ -28,7 +28,7 @@ st.markdown("""
 <style>
     /* Dark theme enhancements */
     .stApp {
-        background-color: #0e1117;
+        background-color: #f8f9fa;
     }
 
     /* Sidebar styling */

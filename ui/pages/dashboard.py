@@ -50,8 +50,16 @@ def render_dashboard(segment: str):
 
     # ── Quick Scan — Top Stocks ──
     st.markdown("### 🔍 Quick Market Scan")
-    scan_symbols = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK",
-                     "SBIN", "ITC", "BHARTIARTL", "KOTAKBANK", "LT"]
+    
+    # Try to load symbols from the first available watchlist
+    all_wl = db.get_all_watchlists()
+    if all_wl and all_wl[0].symbols:
+        scan_symbols = all_wl[0].symbols[:10]  # Take top 10 from the first watchlist
+        st.caption(f"Scanning top {len(scan_symbols)} stocks from watchlist '{all_wl[0].name}'")
+    else:
+        # Fallback if no watchlists exist
+        scan_symbols = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
+        st.caption("Scanning default stocks (create a watchlist to customize)")
 
     results = []
     for sym in scan_symbols:

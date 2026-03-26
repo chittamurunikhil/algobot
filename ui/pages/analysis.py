@@ -22,9 +22,9 @@ def render_analysis(segment: str):
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         symbol = st.text_input(
-            "Enter Stock Symbol",
+            "Enter Stock/Index Symbol",
             value="RELIANCE",
-            placeholder="e.g., RELIANCE, TCS, NIFTY",
+            placeholder="e.g., RELIANCE, NIFTY, GOLD",
             key="analysis_symbol",
         ).upper().strip()
     with col2:
@@ -45,6 +45,18 @@ def render_analysis(segment: str):
             return
 
         result = generate_signals(df, symbol, segment)
+
+    with st.spinner(f"Running ML ensemble predictions for {symbol}..."):
+        from ml.ensemble import EnsemblePredictor
+        ensemble = EnsemblePredictor()
+        try:
+            if len(df) >= 100:
+                ensemble.train(df)
+            ml_signal, ml_confidence = ensemble.predict_single(df)
+            ml_direction = ml_signal.value.replace("STRONG_", "") if ml_signal.value != "HOLD" else "HOLD"
+        except Exception as e:
+            ml_confidence = 0.0
+            ml_direction = "HOLD"
 
     # ── Signal Banner ──
     signal_colors = {
@@ -106,11 +118,35 @@ def render_analysis(segment: str):
         opp = margin.evaluate_opportunity(result)
         if opp["opportunity"]:
             st.success(f"✅ Spread: {opp['spread_pct']:.2f}%")
-            st.write(f"**Buy at:** ₹{opp['buy_price']:,.2f}")
-            st.write(f"**Sell at:** ₹{opp['sell_price']:,.2f}")
-            st.write(f"**Commission/share:** ₹{opp['estimated_commission_per_share']:,.2f}")
+            
+            # Allow user to edit order constraints
+            default_sl = margin.risk_manager.calculate_stop_loss(opp["buy_price"], result.atr, "BUY")
+            default_qty = margin.risk_manager.calculate_position_size(opp["buy_price"], default_sl)
+            
+            scol1, scol2 = st.columns(2)
+            with scol1:
+                margin_buy = st.number_input("Entry Price (₹)", min_value=0.1, value=float(opp["buy_price"]), step=0.5, key="margin_buy")
+                margin_qty = st.number_input("Total Quantity", min_value=1, value=max(1, default_qty), step=1, key="margin_qty")
+            with scol2:
+                margin_sell = st.number_input("Target Sell (₹)", min_value=0.1, value=float(opp["sell_price"]), step=0.5, key="margin_sell")
+                margin_sl = st.number_input("Stoploss (₹)", min_value=0.1, value=float(default_sl), step=0.5, key="margin_sl")
+
+            est_profit = (margin_sell - margin_buy) * margin_qty
+            total_required = margin_buy * margin_qty
+            
+            st.write(
+                f"**Total Amount Required:** ₹{total_required:,.2f} | "
+                f"**Est. Profit:** ₹{est_profit:,.2f}"
+            )
+
             if st.button("Execute Margin Trade", key="exec_margin"):
-                result_exec = margin.execute_margin_trade(result)
+                result_exec = margin.execute_margin_trade(
+                    result, 
+                    quantity=margin_qty, 
+                    stop_loss=margin_sl,
+                    buy_price=margin_buy,
+                    sell_price=margin_sell
+                )
                 if result_exec["success"]:
                     st.success(f"✅ Order placed! Est. profit: ₹{result_exec['estimated_profit']:,.2f}")
                 else:
@@ -121,20 +157,23 @@ def render_analysis(segment: str):
     with col2:
         st.markdown("### 🎯 Prediction Trade Opportunity")
         predictor = PredictionTrader()
-        pred_opp = predictor.evaluate_opportunity(result)
+        pred_opp = predictor.evaluate_opportunity(result, ml_confidence, ml_direction)
         if pred_opp["opportunity"]:
             st.success(f"✅ {pred_opp['direction']} — Confidence: {pred_opp['combined_confidence']:.0f}%")
             st.write(f"**Entry:** ₹{pred_opp['entry_price']:,.2f}")
             st.write(f"**Stop Loss:** ₹{pred_opp['stop_loss']:,.2f}")
             st.write(f"**Take Profit:** ₹{pred_opp['take_profit']:,.2f}")
             if st.button("Execute Prediction Trade", key="exec_pred"):
-                result_exec = predictor.execute_prediction_trade(result)
+                result_exec = predictor.execute_prediction_trade(result, ml_confidence, ml_direction)
                 if result_exec["success"]:
                     st.success(f"✅ Order placed! R:R = {result_exec['risk_reward']:.1f}x")
                 else:
                     st.error(f"❌ {result_exec['reason']}")
         else:
-            st.warning(f"❌ {pred_opp['reason']}")
+            reason_msg = pred_opp['reason']
+            # Fallback for displaying the combined confidence if blocking
+            conf = pred_opp.get('combined_confidence', 0)
+            st.warning(f"❌ {reason_msg} (Conf: {conf:.0f}%)")
 
     st.divider()
 

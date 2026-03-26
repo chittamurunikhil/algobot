@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     # ── Risk Management ──
     max_loss_per_trade_pct: float = 1.0
     daily_loss_limit_pct: float = 3.0
-    max_open_positions: int = 5
+    max_open_positions: int = 10
     position_size_pct: float = 2.0
     trailing_stop_atr_multiplier: float = 1.5
     margin_min_spread_pct: float = 0.3
@@ -93,3 +93,43 @@ def get_settings() -> Settings:
         else:
             _settings = Settings()
     return _settings
+
+
+def update_settings(updates: dict):
+    """Write updates to .env file and reload settings in memory."""
+    global _settings
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            
+    env_map = {}
+    for i, line in enumerate(lines):
+        striped = line.strip()
+        if striped and not striped.startswith("#") and "=" in striped:
+            key = striped.split("=")[0].strip()
+            env_map[key] = i
+            
+    for k, v in updates.items():
+        env_key = k.upper()
+        if isinstance(v, bool):
+            v_str = "true" if v else "false"
+        else:
+            v_str = str(v)
+            
+        new_line = f"{env_key}={v_str}\n"
+        if env_key in env_map:
+            lines[env_map[env_key]] = new_line
+        else:
+            if lines and not lines[-1].endswith("\n"):
+                lines.append("\n")
+            lines.append(new_line)
+            env_map[env_key] = len(lines) - 1
+            
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+        
+    # Reload settings
+    _settings = Settings(_env_file=env_path)

@@ -61,7 +61,10 @@ class MarginTrader:
         }
 
     def execute_margin_trade(self, analysis: AnalysisResult,
-                              quantity: Optional[int] = None) -> dict:
+                              quantity: Optional[int] = None,
+                              stop_loss: Optional[float] = None,
+                              buy_price: Optional[float] = None,
+                              sell_price: Optional[float] = None) -> dict:
         """
         Execute a margin trade pair (buy + sell).
         In paper mode, both orders are simulated.
@@ -71,33 +74,40 @@ class MarginTrader:
         if not opp["opportunity"]:
             return {"success": False, "reason": opp["reason"]}
 
+        # Determine Price Overrides
+        final_buy = buy_price if buy_price is not None else opp["buy_price"]
+        final_sell = sell_price if sell_price is not None else opp["sell_price"]
+        
+        # Determine Stop Loss to use
+        sl_to_use = stop_loss if stop_loss is not None else self.risk_manager.calculate_stop_loss(final_buy, analysis.atr, "BUY")
+
         # Calculate position size if not provided
         if quantity is None:
             quantity = self.risk_manager.calculate_position_size(
-                opp["buy_price"],
-                self.risk_manager.calculate_stop_loss(opp["buy_price"], analysis.atr, "BUY")
+                final_buy,
+                sl_to_use
             )
 
         # Place buy order
         buy_order = self.order_manager.place_order(
             symbol=analysis.symbol,
             side="BUY",
-            entry_price=opp["buy_price"],
+            entry_price=final_buy,
             quantity=quantity,
             segment=analysis.segment,
             mode="margin",
-            stop_loss=self.risk_manager.calculate_stop_loss(opp["buy_price"], analysis.atr, "BUY"),
-            take_profit=opp["sell_price"],
+            stop_loss=sl_to_use,
+            take_profit=final_sell,
             confidence=analysis.confidence,
-            notes=f"Margin trade - spread: {opp['spread_pct']:.2f}%",
+            notes=f"Margin trade - spread override",
         )
 
         return {
             "success": True,
             "buy_order": buy_order,
-            "buy_price": opp["buy_price"],
-            "target_sell_price": opp["sell_price"],
+            "buy_price": final_buy,
+            "target_sell_price": final_sell,
             "quantity": quantity,
-            "estimated_profit": opp["estimated_commission_per_share"] * quantity,
-            "spread_pct": opp["spread_pct"],
+            "estimated_profit": (final_sell - final_buy) * quantity,
+            "spread_pct": ((final_sell - final_buy) / final_buy * 100) if final_buy > 0 else 0.0,
         }

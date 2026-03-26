@@ -60,11 +60,66 @@ def render_trades(segment: str):
 
     st.divider()
 
-    # ── Trade Table ──
+    # ── OPEN POSITIONS MANAGEMENT ──
+    from trading.order_manager import OrderManager
+    from data.market_feed import get_data_provider
+    om = OrderManager()
+    provider = get_data_provider()
+
+    open_trades = [t for t in trades if t.status.value == "OPEN"]
+    if open_trades:
+        st.markdown("### 🟢 Manage Active Positions")
+
+        for t in open_trades:
+            with st.expander(f"{t.symbol} | {t.mode.upper()} - {t.side.value} {t.quantity} @ ₹{t.entry_price:,.2f}"):
+                cur_ltp = provider.get_ltp(t.symbol)
+                unrealized_pnl = (cur_ltp - t.entry_price) * t.quantity if t.side.value == "BUY" else (t.entry_price - cur_ltp) * t.quantity
+                unr_emoji = "🟢" if unrealized_pnl >= 0 else "🔴"
+
+                total_invested = t.entry_price * t.quantity
+                current_value = cur_ltp * t.quantity
+
+                st.write(
+                    f"**LTP:** ₹{cur_ltp:,.2f} | "
+                    f"**Invested:** ₹{total_invested:,.2f} | "
+                    f"**Current Value:** ₹{current_value:,.2f} | "
+                    f"**Unrealized P&L:** {unr_emoji} ₹{unrealized_pnl:,.2f}"
+                )
+                
+                with st.form(f"edit_form_{t.id}"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        new_sl = st.number_input("Stop Loss", value=float(t.stop_loss), step=0.5, key=f"sl_{t.id}")
+                    with c2:
+                        new_tp = st.number_input("Take Profit", value=float(t.take_profit), step=0.5, key=f"tp_{t.id}")
+                        
+                    if st.form_submit_button("💾 Update Parameters"):
+                        t.stop_loss = new_sl
+                        t.take_profit = new_tp
+                        db.save_trade(t)
+                        st.success("Updated successfully! The parameters have been saved.")
+                        st.rerun()
+
+                if st.button(f"🔴 Square Off {t.symbol} at Market (LTP: ₹{cur_ltp:,.2f})", key=f"close_{t.id}", type="primary", use_container_width=True):
+                    om.close_order(t.id, cur_ltp)
+                    st.success(f"Position closed at ₹{cur_ltp:,.2f}! You can refresh or view the ledger below.")
+                    st.rerun()
+
+        st.divider()
+
+    st.markdown("### 📖 Trade Ledger")
     trade_data = []
     for t in trades:
         pnl_str = f"₹{t.pnl:,.2f}" if t.status.value == "CLOSED" else "—"
         pnl_emoji = "🟢" if t.pnl > 0 else "🔴" if t.pnl < 0 else ""
+
+        invested = t.entry_price * t.quantity
+        if t.status.value == "OPEN":
+            cur_ltp = provider.get_ltp(t.symbol)
+            current_value = cur_ltp * t.quantity
+            current_val_str = f"₹{current_value:,.2f}"
+        else:
+            current_val_str = "—"
 
         trade_data.append({
             "Date": t.created_at.strftime("%Y-%m-%d %H:%M"),
@@ -75,6 +130,8 @@ def render_trades(segment: str):
             "Entry": f"₹{t.entry_price:,.2f}",
             "Exit": f"₹{t.exit_price:,.2f}" if t.exit_price else "—",
             "Qty": t.quantity,
+            "Invested": f"₹{invested:,.2f}",
+            "Current Value": current_val_str,
             "SL": f"₹{t.stop_loss:,.2f}" if t.stop_loss > 0 else "—",
             "TP": f"₹{t.take_profit:,.2f}" if t.take_profit > 0 else "—",
             "P&L": f"{pnl_emoji} {pnl_str}",
