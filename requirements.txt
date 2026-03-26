@@ -24,3 +24,6 @@ sqlalchemy>=2.0.0
 
 # HTTP
 requests>=2.31.0
+
+# Market Data
+yfinance>=0.2.30

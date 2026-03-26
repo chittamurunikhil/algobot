@@ -22,9 +22,9 @@ def render_analysis(segment: str):
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         symbol = st.text_input(
-            "Enter Stock Symbol",
+            "Enter Stock/Index Symbol",
             value="RELIANCE",
-            placeholder="e.g., RELIANCE, TCS, NIFTY",
+            placeholder="e.g., RELIANCE, NIFTY, GOLD",
             key="analysis_symbol",
         ).upper().strip()
     with col2:
