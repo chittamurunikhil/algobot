@@ -23,7 +23,8 @@ class PredictionTrader:
         self.order_manager = OrderManager()
 
     def evaluate_opportunity(self, analysis: AnalysisResult,
-                              ml_confidence: float = 0.0) -> dict:
+                              ml_confidence: float = 0.0,
+                              ml_direction: Optional[str] = None) -> dict:
         """
         Evaluate if a prediction-based trade opportunity exists.
         Combines technical signal with ML confidence.
@@ -33,12 +34,15 @@ class PredictionTrader:
         combined_confidence = (tech_confidence * 0.4 + ml_confidence * 0.6) if ml_confidence > 0 else tech_confidence
 
         # Determine direction
-        if analysis.signal in (Signal.BUY, Signal.STRONG_BUY):
-            direction = "BUY"
-        elif analysis.signal in (Signal.SELL, Signal.STRONG_SELL):
-            direction = "SELL"
+        if ml_direction and ml_direction != "HOLD":
+            direction = ml_direction
         else:
-            direction = "HOLD"
+            if analysis.signal in (Signal.BUY, Signal.STRONG_BUY):
+                direction = "BUY"
+            elif analysis.signal in (Signal.SELL, Signal.STRONG_SELL):
+                direction = "SELL"
+            else:
+                direction = "HOLD"
 
         # Validate
         valid, reason = self.risk_manager.validate_prediction_trade(combined_confidence)
@@ -64,11 +68,12 @@ class PredictionTrader:
 
     def execute_prediction_trade(self, analysis: AnalysisResult,
                                    ml_confidence: float = 0.0,
+                                   ml_direction: Optional[str] = None,
                                    quantity: Optional[int] = None) -> dict:
         """
         Execute a prediction-based trade.
         """
-        opp = self.evaluate_opportunity(analysis, ml_confidence)
+        opp = self.evaluate_opportunity(analysis, ml_confidence, ml_direction)
 
         if not opp["opportunity"]:
             return {"success": False, "reason": opp["reason"]}
