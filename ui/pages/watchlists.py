@@ -49,7 +49,17 @@ def render_watchlists(segment: str):
             # ── Header ──
             col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
-                st.markdown(f"### {wl.name}")
+                with st.form(f"rename_form_{wl.id}", border=False):
+                    rename_cols = st.columns([4, 1])
+                    with rename_cols[0]:
+                        new_name = st.text_input("Rename Watchlist", value=wl.name, key=f"rename_{wl.id}", label_visibility="collapsed")
+                    with rename_cols[1]:
+                        if st.form_submit_button("Rename ✏️"):
+                            if new_name and new_name != wl.name:
+                                wm.update_watchlist_name(wl.id, new_name)
+                                st.success(f"Watchlist renamed to {new_name}")
+                                st.rerun()
+
                 st.caption(f"Segment: {wl.segment} | {wl.count} / 200 symbols | Updated: {wl.updated_at.strftime('%Y-%m-%d %H:%M')}")
             with col2:
                 if st.button("🔍 Scan All", key=f"scan_{wl.id}"):
